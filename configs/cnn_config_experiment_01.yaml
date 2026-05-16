@@ -1,0 +1,31 @@
+# CNN Baseline Configuration — EfficientNet-B0
+# Reference: Wang et al. (2020) — CNNs for deepfake detection
+
+model:
+  backbone: "efficientnet_b0"
+  pretrained: true            # ImageNet weights
+  num_classes: 3              # REAL, SYNTHETIC, TAMPERED
+
+training:
+  epochs: 10
+  batch_size: 32              # CNNs are more efficient — larger batch
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  lr_scheduler: "cosine"
+  img_size: 224
+
+augmentation:
+  horizontal_flip: true
+  rotation: 10
+  color_jitter:
+    brightness: 0.2
+    contrast: 0.2
+
+dataset:
+  id: "saberzl/SID_Set"
+  local_path: "dataset/sid_set"   # saved locally after the first download
+  max_train: null
+  max_val: null
+
+output:
+  dir: "experiments/cnn_baseline_01"

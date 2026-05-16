@@ -1,0 +1,58 @@
+{
+  "nome": "SLM_Qwen2VL_QLoRA",
+  "timestamp": "20260514_014038",
+  "metricas": {
+    "acuracia": 0.94,
+    "f1_macro": 0.9400625390869294,
+    "report": {
+      "REAL": {
+        "precision": 0.9789473684210527,
+        "recall": 0.93,
+        "f1-score": 0.9538461538461539,
+        "support": 100.0
+      },
+      "SYNTHETIC": {
+        "precision": 0.9238095238095239,
+        "recall": 0.97,
+        "f1-score": 0.9463414634146341,
+        "support": 100.0
+      },
+      "TAMPERED": {
+        "precision": 0.92,
+        "recall": 0.92,
+        "f1-score": 0.92,
+        "support": 100.0
+      },
+      "accuracy": 0.94,
+      "macro avg": {
+        "precision": 0.9409189640768588,
+        "recall": 0.94,
+        "f1-score": 0.9400625390869294,
+        "support": 300.0
+      },
+      "weighted avg": {
+        "precision": 0.9409189640768589,
+        "recall": 0.94,
+        "f1-score": 0.9400625390869292,
+        "support": 300.0
+      }
+    },
+    "conf_matrix": [
+      [
+        93,
+        2,
+        5
+      ],
+      [
+        0,
+        97,
+        3
+      ],
+      [
+        2,
+        6,
+        92
+      ]
+    ]
+  }
+}

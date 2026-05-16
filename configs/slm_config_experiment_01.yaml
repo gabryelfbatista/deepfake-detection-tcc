@@ -1,0 +1,56 @@
+# Multimodal SLM Configuration — Qwen2-VL-2B
+# References: Hu et al. (2021) — LoRA; Dettmers et al. (2023) — QLoRA
+
+model:
+  id: "Qwen/Qwen2-VL-2B-Instruct"
+  dtype: "bfloat16"
+  min_pixels: 3136    # 4 * 28 * 28 — minimum resolution
+  max_pixels: 200704  # 256 * 28 * 28 — cap to fit in 8GB
+
+quantization:
+  load_in_4bit: true
+  quant_type: "nf4"           # NormalFloat4
+  double_quant: true          # saves ~15% extra VRAM
+
+lora:
+  r: 8                        # reduced rank to fit in 8GB (was 16)
+  alpha: 16                   # scale = alpha/r = 2x
+
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  epochs: 3
+  batch_size: 1               # RTX 4060 8GB
+  grad_accumulation: 8        # effective batch = 8
+  learning_rate: 2.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  optimizer: "paged_adamw_8bit"
+  max_seq_length: 512
+  bf16: true
+  gradient_checkpointing: true
+
+dataset:
+  id: "saberzl/SID_Set"
+  local_path: "dataset/sid_set"  # saved locally after the first download
+  max_train: 1000             # null = full dataset (210k)
+  max_val: 300                # null = full dataset (30k)
+  # For a quick pipeline test, use:
+  # max_train: 2000
+  # max_val: 500
+
+output:
+  dir: "experiments/slm_run_01"
+  save_steps: 100
+  eval_steps: 100
+  save_total_limit: 2
+  report_to: "none"           # switch to "wandb" for tracking

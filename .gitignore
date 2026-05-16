@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+.venv/
+
+# Docs
+docs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Modelos e checkpoints (pesados — não versionar)
+experiments/*/checkpoint-*/
+experiments/*/lora_adapter/
+experiments/**/*.pth
+experiments/**/*.bin
+experiments/**/*.safetensors
+
+# Dataset (não versionar — baixar via HuggingFace)
+dataset/*
+*.zip
+*.tar.gz
+
+# Logs
+experiments/*/logs/
+wandb/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+/CLAUDE.md
