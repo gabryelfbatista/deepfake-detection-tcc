@@ -23,23 +23,20 @@ def _resolve_path(local_dir: str) -> Path:
 
 def load_sidset(local_dir: str = DEFAULT_LOCAL):
     """
-    Load SID_Set from disk if already downloaded; otherwise download from
-    HuggingFace and save under local_dir for future runs.
+    Load SID_Set from disk. Raises RuntimeError if not found.
+    Run `uv run python src/data/download_dataset.py` first to download.
     """
     path = _resolve_path(local_dir)
     dataset_file = path / "dataset_dict.json"
 
-    if path.is_dir() and dataset_file.exists():
-        print(f"[dataset] Loading from disk: '{path}'")
-        sidset = load_from_disk(str(path))
-    else:
-        print(f"[dataset] '{path}' not found — downloading {DATASET_ID} from HuggingFace...")
-        sidset = load_dataset(DATASET_ID)
-        path.mkdir(parents=True, exist_ok=True)
-        print(f"[dataset] Saving to '{path}'...")
-        sidset.save_to_disk(str(path))
-        print(f"[dataset] Dataset saved.")
+    if not (path.is_dir() and dataset_file.exists()):
+        raise RuntimeError(
+            f"Dataset not found at '{path}'.\n"
+            f"Download it first: uv run python src/data/download_dataset.py"
+        )
 
+    print(f"[dataset] Loading from disk: '{path}'")
+    sidset = load_from_disk(str(path))
     print(f"[dataset] Train: {len(sidset['train']):,} | Val: {len(sidset['validation']):,}")
     return sidset
 
