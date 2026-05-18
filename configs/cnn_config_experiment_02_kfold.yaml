@@ -7,8 +7,8 @@ model:
 
 training:
   epochs: 10
-  batch_size: 32
-  learning_rate: 1.0e-4
+  batch_size: 256
+  learning_rate: 8.0e-4
   weight_decay: 0.01
   lr_scheduler: "cosine"
   img_size: 224
@@ -23,7 +23,7 @@ augmentation:
 dataset:
   id: "saberzl/SID_Set"
   local_path: "dataset/sid_set"
-  max_train: 6000  
+  max_train: null 
 
 kfold:
   n_splits: 5

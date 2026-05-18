@@ -1,3 +1,5 @@
 timestamp,model,accuracy,f1_macro,f1_real,f1_synthetic,f1_tampered
 20260514_014038,SLM_Qwen2VL_QLoRA,94.00,94.01,95.38,94.63,92.00
 20260510_193136,CNN_EfficientNetB0,96.08,96.08,94.17,99.90,94.18
+20260517_152244,cnn_kfold_5fold,,84.52±0.93,,,
+20260517_184114,cnn_kfold_5fold,,95.39±0.06,,,

@@ -102,8 +102,8 @@ def train_fold(fold_idx, train_indices, val_indices, hf_train, cfg, accelerator,
     val_ds   = SIDSetCNN(hf_train, build_transforms(cfg, train=False), list(val_indices))
 
     # pin_memory and device placement handled by accelerate
-    train_loader = DataLoader(train_ds, batch_size=t["batch_size"], shuffle=True,  num_workers=4)
-    val_loader   = DataLoader(val_ds,   batch_size=t["batch_size"], shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_ds, batch_size=t["batch_size"], shuffle=True,  num_workers=8)
+    val_loader   = DataLoader(val_ds,   batch_size=t["batch_size"], shuffle=False, num_workers=8)
 
     model     = build_model(cfg)
     criterion = nn.CrossEntropyLoss()
