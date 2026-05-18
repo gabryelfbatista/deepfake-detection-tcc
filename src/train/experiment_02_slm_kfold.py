@@ -85,22 +85,32 @@ class SIDSetSLM(Dataset):
         image = image.convert("RGB") if hasattr(image, "convert") else Image.open(image).convert("RGB")
         label_text = LABEL_NAMES[item["label"]]
 
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": image},
-                    {"type": "text", "text": PROMPT_TEMPLATE},
-                ],
-            },
-            {"role": "assistant", "content": label_text},
-        ]
+        user_turn = {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": PROMPT_TEMPLATE},
+            ],
+        }
+        messages_full   = [user_turn, {"role": "assistant", "content": label_text}]
+        messages_prompt = [user_turn]
 
-        text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-        image_inputs, video_inputs = process_vision_info(messages)
+        text_full   = self.processor.apply_chat_template(messages_full,   tokenize=False, add_generation_prompt=False)
+        text_prompt = self.processor.apply_chat_template(messages_prompt, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages_full)
+
+        # Length of the prompt portion (no padding) — everything before this is masked from the loss.
+        prompt_only = self.processor(
+            text=[text_prompt],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=False,
+            return_tensors="pt",
+        )
+        prompt_len = prompt_only["input_ids"].shape[1]
 
         inputs = self.processor(
-            text=[text],
+            text=[text_full],
             images=image_inputs,
             videos=video_inputs,
             padding="max_length",
@@ -109,7 +119,13 @@ class SIDSetSLM(Dataset):
             return_tensors="pt",
         )
         inputs = {k: v.squeeze(0) for k, v in inputs.items()}
-        inputs["labels"] = inputs["input_ids"].clone()
+
+        # Response-only loss: mask prompt tokens and padding with -100 so the model is only
+        # scored on the answer tokens (REAL / SYNTHETIC / TAMPERED + EOS).
+        labels = inputs["input_ids"].clone()
+        labels[:prompt_len] = -100
+        labels[inputs["attention_mask"] == 0] = -100
+        inputs["labels"] = labels
         return inputs
 
 
@@ -406,6 +422,8 @@ def train(cfg):
         min_pixels=min_px,
         max_pixels=max_px,
     )
+    # SFT requires right-padding so the answer span sits at a known offset from `prompt_len`.
+    processor.tokenizer.padding_side = "right"
 
     log("\n[setup] Loading dataset...")
     sidset = load_sidset(cfg["dataset"].get("local_path", "dataset/sid_set"))
