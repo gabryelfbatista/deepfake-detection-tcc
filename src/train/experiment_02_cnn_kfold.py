@@ -184,13 +184,18 @@ def train_fold(fold_idx, train_indices, val_indices, hf_train, cfg, accelerator,
 
 def save_kfold_results(fold_metrics, output_dir, cfg):
     f1_scores = [m["best_f1"] for m in fold_metrics]
-    mean_f1 = float(np.mean(f1_scores))
-    std_f1  = float(np.std(f1_scores))
+    accs      = [m["accuracy"] for m in fold_metrics]
+    mean_f1, std_f1 = float(np.mean(f1_scores)), float(np.std(f1_scores))
+    mean_acc        = float(np.mean(accs))
+    mean_f1_real    = float(np.mean([m["f1_real"]      for m in fold_metrics]))
+    mean_f1_syn     = float(np.mean([m["f1_synthetic"] for m in fold_metrics]))
+    mean_f1_tam     = float(np.mean([m["f1_tampered"]  for m in fold_metrics]))
 
     print(f"\n{'='*55}")
     print(f"K-Fold Results ({len(fold_metrics)} folds)")
     print(f"Per-fold F1-Macro: {[f'{v*100:.1f}%' for v in f1_scores]}")
     print(f"Mean F1-Macro : {mean_f1*100:.2f}%  ±  {std_f1*100:.2f}%")
+    print(f"Mean Accuracy : {mean_acc*100:.2f}%")
     print(f"{'='*55}")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -199,6 +204,7 @@ def save_kfold_results(fold_metrics, output_dir, cfg):
         "n_splits" : cfg["kfold"]["n_splits"],
         "mean_f1"  : mean_f1,
         "std_f1"   : std_f1,
+        "mean_acc" : mean_acc,
         "per_fold" : fold_metrics,
     }
 
@@ -219,11 +225,11 @@ def save_kfold_results(fold_metrics, output_dir, cfg):
         writer.writerow({
             "timestamp"   : ts,
             "model"       : f"cnn_kfold_{cfg['kfold']['n_splits']}fold",
-            "accuracy"    : "",
+            "accuracy"    : f"{mean_acc*100:.2f}",
             "f1_macro"    : f"{mean_f1*100:.2f}±{std_f1*100:.2f}",
-            "f1_real"     : "",
-            "f1_synthetic": "",
-            "f1_tampered" : "",
+            "f1_real"     : f"{mean_f1_real*100:.2f}",
+            "f1_synthetic": f"{mean_f1_syn*100:.2f}",
+            "f1_tampered" : f"{mean_f1_tam*100:.2f}",
         })
 
     print(f"\nResults saved to: {out}")
@@ -271,6 +277,7 @@ def train(cfg):
         fold_metrics.append({
             "fold"        : fold_idx + 1,
             "best_f1"     : best_f1,
+            "accuracy"    : float(accuracy_score(y_true, y_pred)),
             "f1_real"     : float(per_class_f1[0]),
             "f1_synthetic": float(per_class_f1[1]),
             "f1_tampered" : float(per_class_f1[2]),

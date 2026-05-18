@@ -113,6 +113,27 @@ class SIDSetSLM(Dataset):
         return inputs
 
 
+def qwen_vl_collator(features):
+    """
+    Qwen-VL returns variable-length `pixel_values` per image (one row per visual patch).
+    The default collator tries to stack them and fails. We:
+      - stack text tensors (already padded to max_length in the Dataset),
+      - concatenate `pixel_values` along dim 0,
+      - stack `image_grid_thw` normally (one [3] vector per image).
+    """
+    batch = {}
+    keys = features[0].keys()
+    for k in keys:
+        vals = [f[k] for f in features]
+        if k == "pixel_values":
+            batch[k] = torch.cat(vals, dim=0)
+        elif k == "image_grid_thw":
+            batch[k] = torch.cat(vals, dim=0) if vals[0].dim() == 2 else torch.stack(vals)
+        else:
+            batch[k] = torch.stack(vals)
+    return batch
+
+
 def build_model(cfg):
     bnb_cfg = BitsAndBytesConfig(
         load_in_4bit=cfg["quantization"]["load_in_4bit"],
@@ -248,6 +269,7 @@ def train_fold(fold_idx, train_indices, val_indices, hf_train, processor, cfg, o
         model=model,
         args=args,
         train_dataset=train_ds,
+        data_collator=qwen_vl_collator,
     )
 
     log(f"[Fold {fold_idx+1}] starting training...")
