@@ -12,17 +12,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-import json
-import csv
 import gc
-from datetime import datetime
 
 import yaml
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import f1_score, accuracy_score
 from PIL import Image
 
 from transformers import (
@@ -32,11 +28,11 @@ from transformers import (
     Trainer,
 )
 from transformers import Qwen3VLForConditionalGeneration
-from peft import LoraConfig, get_peft_model, PeftModel, TaskType, prepare_model_for_kbit_training
+from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
 from qwen_vl_utils import process_vision_info
 
-from data.dataset import load_sidset, stratified_sample, NUM_CLASSES, LABEL_NAMES
-from utils import set_seed, gpu_info, TEXT2LABEL
+from data.dataset import load_sidset, stratified_sample, LABEL_NAMES
+from utils import set_seed, gpu_info
 
 CONFIG_PATH = Path(__file__).parent.parent.parent / "configs" / "slm_config_experiment_02_kfold.yaml"
 
@@ -187,62 +183,6 @@ def build_model(cfg):
     return model
 
 
-@torch.inference_mode()
-def evaluate_fold(model, processor, hf_split, eval_indices):
-    """Generation-based F1 evaluation. Runs only on rank 0."""
-    model.eval()
-    y_true, y_pred = [], []
-    device = next(model.parameters()).device
-
-    n = len(eval_indices)
-    log(f"  [eval] generating predictions for {n:,} examples...")
-
-    for i, idx in enumerate(eval_indices):
-        if i % 200 == 0 and i > 0:
-            log(f"  [eval] {i:,}/{n:,}")
-
-        item = hf_split[int(idx)]
-        image = item["image"]
-        image = image.convert("RGB") if hasattr(image, "convert") else Image.open(image).convert("RGB")
-
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": image},
-                    {"type": "text", "text": PROMPT_TEMPLATE},
-                ],
-            }
-        ]
-        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        image_inputs, video_inputs = process_vision_info(messages)
-        inputs = processor(
-            text=[text],
-            images=image_inputs,
-            videos=video_inputs,
-            return_tensors="pt",
-        ).to(device)
-
-        out = model.generate(**inputs, max_new_tokens=5, do_sample=False)
-        generated = processor.decode(
-            out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
-        ).strip().upper()
-
-        pred = TEXT2LABEL.get(generated, -1)
-        if pred == -1:
-            for k, v in TEXT2LABEL.items():
-                if k in generated:
-                    pred = v
-                    break
-            if pred == -1:
-                pred = 0
-
-        y_true.append(item["label"])
-        y_pred.append(pred)
-
-    return y_true, y_pred
-
-
 def train_fold(fold_idx, train_indices, val_indices, hf_train, processor, cfg, output_dir):
     fold_dir = output_dir / f"fold_{fold_idx + 1}"
     if is_main_process():
@@ -300,47 +240,6 @@ def train_fold(fold_idx, train_indices, val_indices, hf_train, processor, cfg, o
             processor.save_pretrained(str(adapter_dir))
             log(f"[Fold {fold_idx+1}] adapter saved to {adapter_dir}")
 
-    # Generation-based eval on a stratified subset of this fold's validation indices.
-    # Only rank 0 runs eval — the trained adapter is identical across ranks.
-    fold_result = None
-    if is_main_process():
-        eval_cap = cfg["dataset"].get("eval_max_per_fold")
-        if eval_cap and eval_cap < len(val_indices):
-            val_labels = np.array(hf_train["label"])[val_indices]
-            per_class = eval_cap // NUM_CLASSES
-            rng = np.random.default_rng(cfg["kfold"]["seed"] + fold_idx)
-            sampled = []
-            for cls in range(NUM_CLASSES):
-                cls_idxs = val_indices[val_labels == cls]
-                rng.shuffle(cls_idxs)
-                sampled.extend(cls_idxs[:per_class].tolist())
-            eval_indices = sampled
-        else:
-            eval_indices = list(val_indices)
-
-        eval_model = trainer.model
-        y_true, y_pred = evaluate_fold(eval_model, processor, hf_train, eval_indices)
-
-        f1_macro = float(f1_score(y_true, y_pred, average="macro"))
-        acc      = float(accuracy_score(y_true, y_pred))
-        per_cls  = f1_score(y_true, y_pred, average=None, labels=[0, 1, 2])
-
-        log(
-            f"[Fold {fold_idx+1}] eval acc={acc*100:.2f}% | "
-            f"F1-Macro={f1_macro*100:.2f}% | "
-            f"REAL={per_cls[0]*100:.1f} SYN={per_cls[1]*100:.1f} TAM={per_cls[2]*100:.1f}"
-        )
-
-        fold_result = {
-            "fold"        : fold_idx + 1,
-            "best_f1"     : f1_macro,
-            "accuracy"    : acc,
-            "f1_real"     : float(per_cls[0]),
-            "f1_synthetic": float(per_cls[1]),
-            "f1_tampered" : float(per_cls[2]),
-            "n_eval"      : len(eval_indices),
-        }
-
     # Cleanup before the next fold
     del trainer, model
     gc.collect()
@@ -349,62 +248,8 @@ def train_fold(fold_idx, train_indices, val_indices, hf_train, processor, cfg, o
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         torch.distributed.barrier()
 
-    return fold_result
 
-
-def save_kfold_results(fold_metrics, output_dir, cfg):
-    f1_scores = [m["best_f1"] for m in fold_metrics]
-    accs      = [m["accuracy"] for m in fold_metrics]
-    mean_f1, std_f1 = float(np.mean(f1_scores)), float(np.std(f1_scores))
-    mean_acc        = float(np.mean(accs))
-
-    print(f"\n{'='*55}")
-    print(f"SLM K-Fold Results ({len(fold_metrics)} folds) — Qwen3-VL-2B + QLoRA")
-    print(f"Per-fold F1-Macro: {[f'{v*100:.2f}%' for v in f1_scores]}")
-    print(f"Mean F1-Macro : {mean_f1*100:.2f}%  ±  {std_f1*100:.2f}%")
-    print(f"Mean Accuracy : {mean_acc*100:.2f}%")
-    print(f"{'='*55}")
-
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    aggregate = {
-        "timestamp": ts,
-        "model"    : cfg["model"]["id"],
-        "n_splits" : cfg["kfold"]["n_splits"],
-        "mean_f1"  : mean_f1,
-        "std_f1"   : std_f1,
-        "mean_acc" : mean_acc,
-        "per_fold" : fold_metrics,
-    }
-
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    with open(out / "aggregate_metrics.json", "w") as f:
-        json.dump(aggregate, f, indent=2, default=str)
-
-    csv_path = Path("experiments/results_summary.csv")
-    exists = csv_path.exists()
-    with open(csv_path, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=[
-            "timestamp", "model", "accuracy", "f1_macro",
-            "f1_real", "f1_synthetic", "f1_tampered"
-        ])
-        if not exists:
-            writer.writeheader()
-        writer.writerow({
-            "timestamp"   : ts,
-            "model"       : f"slm_qwen3vl2b_qlora_kfold_{cfg['kfold']['n_splits']}fold",
-            "accuracy"    : f"{mean_acc*100:.2f}",
-            "f1_macro"    : f"{mean_f1*100:.2f}±{std_f1*100:.2f}",
-            "f1_real"     : f"{np.mean([m['f1_real']     for m in fold_metrics])*100:.2f}",
-            "f1_synthetic": f"{np.mean([m['f1_synthetic'] for m in fold_metrics])*100:.2f}",
-            "f1_tampered" : f"{np.mean([m['f1_tampered']  for m in fold_metrics])*100:.2f}",
-        })
-
-    print(f"\nResults saved to: {out}")
-    print(f"Global CSV updated: {csv_path}")
-
-
-def train(cfg):
+def train(cfg, start_fold: int = 1):
     set_seed(cfg["kfold"]["seed"])
 
     log("\n" + "="*60)
@@ -445,22 +290,27 @@ def train(cfg):
     )
 
     output_dir = Path(cfg["output"]["dir"])
-    fold_metrics = []
+
+    if start_fold > 1:
+        log(f"[setup] Resuming from fold {start_fold} (skipping folds 1–{start_fold - 1})")
 
     for fold_idx, (train_pos, val_pos) in enumerate(kf.split(pool_indices, all_labels)):
+        if fold_idx + 1 < start_fold:
+            continue
+
         train_indices = pool_indices[train_pos]
         val_indices   = pool_indices[val_pos]
 
-        result = train_fold(
-            fold_idx, train_indices, val_indices, hf_train, processor, cfg, output_dir
-        )
-        if result is not None:
-            fold_metrics.append(result)
+        train_fold(fold_idx, train_indices, val_indices, hf_train, processor, cfg, output_dir)
 
-    if is_main_process() and fold_metrics:
-        save_kfold_results(fold_metrics, output_dir, cfg)
+    log("\nAll folds trained. Run evaluate_slm_kfold.py for inference-based evaluation.")
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start-fold", type=int, default=1,
+                        help="Resume from this fold number (1-indexed). Skips earlier folds.")
+    args = parser.parse_args()
     cfg = load_config()
-    train(cfg)
+    train(cfg, start_fold=args.start_fold)

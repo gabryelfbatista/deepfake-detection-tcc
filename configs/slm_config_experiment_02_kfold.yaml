@@ -28,7 +28,7 @@ lora:
 
 training:
   epochs: 2
-  batch_size: 2                 # per device — 2x 4090 24GB
+  batch_size: 2                
   grad_accumulation: 8          # effective batch = 2 * 2 GPUs * 8 = 32
   learning_rate: 2.0e-4
   lr_scheduler: "cosine"
@@ -42,11 +42,11 @@ training:
 dataset:
   id: "saberzl/SID_Set"
   local_path: "dataset/sid_set"
-  max_train: 600               # null = use full train split (210k)
-  eval_max_per_fold: 1500       # stratified subset for generation-based F1 per fold
+  max_train: null               
+  eval_max_per_fold: null      
 
 kfold:
-  n_splits: 2
+  n_splits: 5
   shuffle: true
   seed: 42
 
@@ -54,4 +54,4 @@ output:
   dir: "experiments/slm_kfold_02"
   save_total_limit: 1
   report_to: "none"
-  save_adapters: true           # keep per-fold LoRA adapters
+  save_adapters: true          
