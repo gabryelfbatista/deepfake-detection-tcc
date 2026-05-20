@@ -63,7 +63,7 @@ def load_model_for_eval(cfg, adapter_dir: Path):
         cfg["model"]["id"],
         quantization_config=bnb_cfg,
         torch_dtype=torch.bfloat16,
-        device_map="auto",
+        device_map={"": 0},
     )
     model = PeftModel.from_pretrained(base, str(adapter_dir))
     model.eval()
@@ -77,65 +77,53 @@ def load_model_for_eval(cfg, adapter_dir: Path):
     return model, processor
 
 
-def _decode_generated(text: str) -> int:
-    text = text.strip().upper()
-    if text in TEXT2LABEL:
-        return TEXT2LABEL[text]
-    for k, v in TEXT2LABEL.items():
-        if k in text:
-            return v
-    return 0
-
-
 @torch.inference_mode()
-def eval_fold(model, processor, hf_split, val_indices, fold_idx, batch_size=8):
+def eval_fold(model, processor, hf_split, val_indices, fold_idx):
     device = next(model.parameters()).device
     n = len(val_indices)
-    print(f"\n[Fold {fold_idx}] evaluating {n:,} examples (batch_size={batch_size})...", flush=True)
+    print(f"\n[Fold {fold_idx}] evaluating {n:,} examples...", flush=True)
 
     y_true, y_pred = [], []
 
-    for batch_start in range(0, n, batch_size):
-        batch_indices = val_indices[batch_start : batch_start + batch_size]
-        if batch_start % (batch_size * 50) == 0 and batch_start > 0:
-            print(f"  [eval] {batch_start:,}/{n:,} ({100*batch_start/n:.1f}%)", flush=True)
+    for i, idx in enumerate(val_indices):
+        if i % 500 == 0 and i > 0:
+            print(f"  [eval] {i:,}/{n:,} ({100*i/n:.1f}%)", flush=True)
 
-        texts, all_image_inputs, labels = [], [], []
-        for idx in batch_indices:
-            item = hf_split[int(idx)]
-            image = item["image"]
-            image = image.convert("RGB") if hasattr(image, "convert") else Image.open(image).convert("RGB")
-            labels.append(item["label"])
+        item = hf_split[int(idx)]
+        image = item["image"]
+        image = image.convert("RGB") if hasattr(image, "convert") else Image.open(image).convert("RGB")
 
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "image": image},
-                        {"type": "text", "text": PROMPT_TEMPLATE},
-                    ],
-                }
-            ]
-            texts.append(
-                processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            )
-            img_inputs, _ = process_vision_info(messages)
-            all_image_inputs.extend(img_inputs)
-
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": PROMPT_TEMPLATE},
+                ],
+            }
+        ]
+        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
         inputs = processor(
-            text=texts,
-            images=all_image_inputs,
-            padding=True,
-            return_tensors="pt",
+            text=[text], images=image_inputs, videos=video_inputs, return_tensors="pt"
         ).to(device)
 
-        prompt_len = inputs["input_ids"].shape[1]
         out = model.generate(**inputs, max_new_tokens=5, do_sample=False)
+        generated = processor.decode(
+            out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
+        ).strip().upper()
 
-        for j, seq in enumerate(out):
-            generated = processor.decode(seq[prompt_len:], skip_special_tokens=True)
-            y_pred.append(_decode_generated(generated))
-        y_true.extend(labels)
+        pred = TEXT2LABEL.get(generated, -1)
+        if pred == -1:
+            for k, v in TEXT2LABEL.items():
+                if k in generated:
+                    pred = v
+                    break
+            if pred == -1:
+                pred = 0
+
+        y_true.append(item["label"])
+        y_pred.append(pred)
 
     f1_macro = float(f1_score(y_true, y_pred, average="macro"))
     acc      = float(accuracy_score(y_true, y_pred))
@@ -221,12 +209,6 @@ def main():
         default=None,
         help="Which fold numbers to evaluate (1-indexed). Default: all.",
     )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=8,
-        help="Inference batch size per GPU step (default: 8). Increase if VRAM allows.",
-    )
     args = parser.parse_args()
 
     cfg = load_config()
@@ -273,7 +255,7 @@ def main():
         print(f"\n[Fold {fold_num}] Loading adapter from {adapter_dir}...")
         model, processor = load_model_for_eval(cfg, adapter_dir)
 
-        result = eval_fold(model, processor, hf_train, val_indices, fold_num, batch_size=args.batch_size)
+        result = eval_fold(model, processor, hf_train, val_indices, fold_num)
         fold_metrics.append(result)
 
         del model, processor
