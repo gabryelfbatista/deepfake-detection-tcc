@@ -73,7 +73,7 @@ def load_model_for_eval(cfg, adapter_dir: Path):
     processor = AutoProcessor.from_pretrained(
         cfg["model"]["id"], min_pixels=min_px, max_pixels=max_px
     )
-    processor.tokenizer.padding_side = "right"
+    processor.tokenizer.padding_side = "left"
     return model, processor
 
 
