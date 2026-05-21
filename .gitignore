@@ -15,6 +15,8 @@ docs/
 # Modelos e checkpoints (pesados — não versionar)
 experiments/*/checkpoint-*/
 experiments/*/lora_adapter/
+experiments/slm_kfold_*/
+experiments/cnn_kfold_*/
 experiments/**/*.pth
 experiments/**/*.bin
 experiments/**/*.safetensors
