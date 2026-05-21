@@ -27,9 +27,9 @@ lora:
     - down_proj
 
 training:
-  epochs: 2
-  batch_size: 2                
-  grad_accumulation: 8          # effective batch = 2 * 2 GPUs * 8 = 32
+  epochs: 1
+  batch_size: 16                
+  grad_accumulation: 2          # effective batch = 2 * 2 GPUs * 8 = 32
   learning_rate: 2.0e-4
   lr_scheduler: "cosine"
   warmup_ratio: 0.05
