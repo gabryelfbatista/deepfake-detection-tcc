@@ -13,6 +13,8 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import models, transforms
 from PIL import Image
 
+from torch.utils.tensorboard import SummaryWriter
+
 from data.dataset import load_sidset, stratified_sample, NUM_CLASSES
 from utils import set_seed, gpu_info
 
@@ -113,6 +115,7 @@ def train(cfg):
     output_dir = Path(cfg["output"]["dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    writer = SummaryWriter(log_dir=output_dir / "runs")
     best_f1 = 0.0
     n_batches = len(train_loader)
     log_every = max(1, n_batches // 10)
@@ -159,11 +162,17 @@ def train(cfg):
         print(f"Epoch {epoch:02d}/{t['epochs']} | loss={mean_loss:.4f} | "
               f"train_acc={train_acc*100:.1f}% | val_acc={val_acc*100:.1f}% | val_f1={val_f1*100:.1f}%")
 
+        writer.add_scalar("Loss/train", mean_loss, epoch)
+        writer.add_scalar("Acc/train", train_acc, epoch)
+        writer.add_scalar("Acc/val", val_acc, epoch)
+        writer.add_scalar("F1-Macro/val", val_f1, epoch)
+
         if val_f1 > best_f1:
             best_f1 = val_f1
             torch.save(model.state_dict(), output_dir / "best_model.pth")
             print(f"  -> Best model saved (F1={best_f1*100:.1f}%)")
 
+    writer.close()
     print(f"\nTraining finished. Best val F1: {best_f1*100:.1f}%")
     return model
 
