@@ -23,6 +23,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import f1_score, accuracy_score
 from PIL import Image
 from accelerate import Accelerator
+from torch.utils.tensorboard import SummaryWriter
 
 from data.dataset import load_sidset, stratified_sample, NUM_CLASSES, LABEL_NAMES
 from utils import set_seed, gpu_info
@@ -119,6 +120,8 @@ def train_fold(fold_idx, train_indices, val_indices, hf_train, cfg, accelerator,
     n_batches = len(train_loader)
     log_every = max(1, n_batches // 10)
 
+    writer = SummaryWriter(log_dir=str(fold_dir / "runs")) if accelerator.is_main_process else None
+
     accelerator.print(f"\n[Fold {fold_idx+1}] {len(train_ds)} train | {len(val_ds)} val — {n_batches} batches/epoch/GPU")
 
     for epoch in range(1, t["epochs"] + 1):
@@ -165,6 +168,12 @@ def train_fold(fold_idx, train_indices, val_indices, hf_train, cfg, accelerator,
             f"val_acc={val_acc*100:.1f}% | val_f1={val_f1*100:.1f}%"
         )
 
+        if writer:
+            writer.add_scalar("Loss/train", mean_loss, epoch)
+            writer.add_scalar("Acc/train", train_acc, epoch)
+            writer.add_scalar("Acc/val", val_acc, epoch)
+            writer.add_scalar("F1-Macro/val", val_f1, epoch)
+
         if val_f1 > best_f1:
             best_f1 = val_f1
             best_y_true, best_y_pred = y_true, y_pred
@@ -175,6 +184,9 @@ def train_fold(fold_idx, train_indices, val_indices, hf_train, cfg, accelerator,
             accelerator.print(f"  -> Best model saved (F1={best_f1*100:.1f}%)")
 
     accelerator.print(f"\n[Fold {fold_idx+1}] Best val F1: {best_f1*100:.1f}%")
+
+    if writer:
+        writer.close()
 
     # Free GPU memory before next fold
     accelerator.free_memory()
