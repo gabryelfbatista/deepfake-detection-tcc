@@ -173,6 +173,7 @@ def train_fold(fold_idx, train_indices, val_indices, hf_train, cfg, accelerator,
             writer.add_scalar("Acc/train", train_acc, epoch)
             writer.add_scalar("Acc/val", val_acc, epoch)
             writer.add_scalar("F1-Macro/val", val_f1, epoch)
+            writer.flush()
 
         if val_f1 > best_f1:
             best_f1 = val_f1
