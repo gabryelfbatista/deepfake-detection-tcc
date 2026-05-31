@@ -1,0 +1,46 @@
+# Multimodal SLM K-Fold Configuration — LFM2.5-VL-450M (Liquid AI)
+# References: Hu et al. (2021) — LoRA; Dettmers et al. (2023) — QLoRA
+
+model:
+  id: "LiquidAI/LFM2.5-VL-450M"
+  dtype: "bfloat16"
+
+quantization:
+  load_in_4bit: true
+  quant_type: "nf4"           # NormalFloat4
+  double_quant: true          # saves ~15% extra VRAM
+
+lora:
+  r: 16
+  alpha: 32                   # scale = alpha/r = 2x
+  dropout: 0.05
+  # null → PEFT uses "all-linear" (auto-detect all linear layers)
+  target_modules: null
+
+training:
+  epochs: 1
+  batch_size: 16              # 450M + 4-bit NF4 fits comfortably on 24GB
+  grad_accumulation: 4        # effective batch = 64 (matches Qwen exp_02)
+  learning_rate: 2.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  optimizer: "paged_adamw_8bit"
+  max_seq_length: 512
+  bf16: true
+  gradient_checkpointing: true
+
+dataset:
+  id: "saberzl/SID_Set"
+  local_path: "dataset/sid_set"
+  max_train: null             # full dataset (210k); pool size for kfold splitting
+
+kfold:
+  n_splits: 5
+  shuffle: true
+  seed: 42
+
+output:
+  dir: "experiments/liquid_kfold_03"
+  report_to: "tensorboard"
+  save_adapters: true
