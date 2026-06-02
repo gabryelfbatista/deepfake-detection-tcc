@@ -17,6 +17,7 @@ experiments/*/checkpoint-*/
 experiments/*/lora_adapter/
 experiments/slm_kfold_*/fold_*/
 experiments/cnn_kfold_*/fold_*/
+experiments/liquid_kfold_*/fold_*/
 experiments/**/*.pth
 experiments/**/*.bin
 experiments/**/*.safetensors
