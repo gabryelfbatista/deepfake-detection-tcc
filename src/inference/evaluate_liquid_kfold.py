@@ -143,6 +143,27 @@ def eval_fold(model, processor, hf_split, val_indices, fold_idx):
     }
 
 
+def checkpoint_path(adapter_root: Path, fold_num: int) -> Path:
+    return adapter_root / f"fold_{fold_num}_eval_checkpoint.json"
+
+
+def save_fold_checkpoint(result: dict, adapter_root: Path):
+    path = checkpoint_path(adapter_root, result["fold"])
+    with open(path, "w") as f:
+        json.dump(result, f, indent=2)
+    print(f"  [checkpoint] Fold {result['fold']} saved to {path}", flush=True)
+
+
+def load_fold_checkpoint(fold_num: int, adapter_root: Path):
+    path = checkpoint_path(adapter_root, fold_num)
+    if path.exists():
+        with open(path) as f:
+            data = json.load(f)
+        print(f"[Fold {fold_num}] Checkpoint found — skipping eval (loaded from {path})", flush=True)
+        return data
+    return None
+
+
 def save_results(fold_metrics, output_dir: Path, cfg):
     f1_scores = [m["best_f1"] for m in fold_metrics]
     accs      = [m["accuracy"] for m in fold_metrics]
@@ -239,6 +260,11 @@ def main():
     fold_metrics = []
 
     for fold_num in target_folds:
+        cached = load_fold_checkpoint(fold_num, adapter_root)
+        if cached is not None:
+            fold_metrics.append(cached)
+            continue
+
         fold_idx   = fold_num - 1
         _, val_pos = folds[fold_idx]
         val_indices = pool_indices[val_pos].tolist()
@@ -252,6 +278,7 @@ def main():
         model, processor = load_model_for_eval(cfg, adapter_dir)
 
         result = eval_fold(model, processor, hf_train, val_indices, fold_num)
+        save_fold_checkpoint(result, adapter_root)
         fold_metrics.append(result)
 
         del model, processor
