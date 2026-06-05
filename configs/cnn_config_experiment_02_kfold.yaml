@@ -6,8 +6,8 @@ model:
   num_classes: 3              # REAL, SYNTHETIC, TAMPERED
 
 training:
-  epochs: 10
-  batch_size: 256
+  epochs: 5
+  batch_size: 512
   learning_rate: 8.0e-4
   weight_decay: 0.01
   lr_scheduler: "cosine"
@@ -31,4 +31,4 @@ kfold:
   seed: 42
 
 output:
-  dir: "experiments/cnn_kfold_02"
+  dir: "experiments/cnn_kfold_04"
