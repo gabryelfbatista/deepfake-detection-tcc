@@ -23,14 +23,14 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import f1_score, accuracy_score
 
 from data.dataset import load_sidset, stratified_sample
-from utils import set_seed
+from utils import set_seed, save_predictions
 from train.experiment_02_cnn_kfold import load_config, build_model, build_transforms, SIDSetCNN
 
 CONFIG_PATH = Path(__file__).parent.parent.parent / "configs" / "cnn_config_experiment_02_kfold.yaml"
 
 
 @torch.inference_mode()
-def eval_fold(model, hf_split, val_indices, cfg, fold_num):
+def eval_fold(model, hf_split, val_indices, cfg, fold_num, checkpoint_root):
     device = next(model.parameters()).device
     n = len(val_indices)
     print(f"\n[Fold {fold_num}] evaluating {n:,} examples...", flush=True)
@@ -59,6 +59,9 @@ def eval_fold(model, hf_split, val_indices, cfg, fold_num):
         f"REAL={per_cls[0]*100:.1f} SYN={per_cls[1]*100:.1f} TAM={per_cls[2]*100:.1f}",
         flush=True,
     )
+
+    cm = save_predictions(checkpoint_root, f"fold_{fold_num}", y_true, y_pred)
+
     return {
         "fold"        : fold_num,
         "best_f1"     : f1_macro,
@@ -67,6 +70,7 @@ def eval_fold(model, hf_split, val_indices, cfg, fold_num):
         "f1_synthetic": float(per_cls[1]),
         "f1_tampered" : float(per_cls[2]),
         "n_eval"      : n,
+        "conf_matrix" : cm,
     }
 
 
@@ -181,7 +185,7 @@ def main():
         model.eval().to(device)
         print(f"\n[Fold {fold_num}] Loaded checkpoint from {checkpoint}")
 
-        result = eval_fold(model, hf_train, val_indices, cfg, fold_num)
+        result = eval_fold(model, hf_train, val_indices, cfg, fold_num, checkpoint_root)
         fold_metrics.append(result)
 
         del model

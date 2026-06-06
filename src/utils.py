@@ -66,6 +66,35 @@ def compute_metrics(y_true, y_pred) -> dict:
     }
 
 
+def save_predictions(output_dir, tag, y_true, y_pred, raw_outputs=None) -> list:
+    """
+    Persist per-example predictions + confusion matrix for offline analysis
+    (e.g. plotting confusion matrices for the thesis without re-running inference).
+
+    Writes {output_dir}/predictions_{tag}.json and returns the confusion matrix
+    (3x3, labels [REAL, SYNTHETIC, TAMPERED]) as a nested list.
+    """
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1, 2]).tolist()
+    payload = {
+        "tag"        : tag,
+        "labels"     : LABEL_NAMES,
+        "y_true"     : [int(t) for t in y_true],
+        "y_pred"     : [int(p) for p in y_pred],
+        "conf_matrix": cm,
+    }
+    if raw_outputs is not None:
+        payload["raw_outputs"] = list(raw_outputs)
+
+    path = out / f"predictions_{tag}.json"
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    print(f"  [predictions] saved {len(payload['y_true'])} preds -> {path}", flush=True)
+    return cm
+
+
 def save_results(metrics: dict, output_dir: str, name: str):
     """
     Save results as JSON and append a row to the cross-experiment comparison CSV.

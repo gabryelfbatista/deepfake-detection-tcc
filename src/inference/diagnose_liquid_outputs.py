@@ -45,8 +45,9 @@ def parse_prediction(generated_upper: str) -> int:
     """Same parsing logic as evaluate_liquid_kfold.eval_fold."""
     pred = TEXT2LABEL.get(generated_upper, -1)
     if pred == -1:
+        # substring OR prefix match (handles truncated tokens like "SYNTHET")
         for k, v in TEXT2LABEL.items():
-            if k in generated_upper:
+            if k in generated_upper or (generated_upper and k.startswith(generated_upper)):
                 pred = v
                 break
         if pred == -1:
@@ -76,7 +77,7 @@ def run(model, processor, hf_split, indices):
             return_dict=True, tokenize=True,
         ).to(device)
 
-        out = model.generate(**inputs, max_new_tokens=5, do_sample=False)
+        out = model.generate(**inputs, max_new_tokens=10, do_sample=False)
         raw = processor.decode(
             out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
         )

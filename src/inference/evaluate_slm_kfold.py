@@ -34,7 +34,7 @@ from peft import PeftModel
 from qwen_vl_utils import process_vision_info
 
 from data.dataset import load_sidset, stratified_sample, NUM_CLASSES, LABEL_NAMES
-from utils import set_seed, TEXT2LABEL
+from utils import set_seed, TEXT2LABEL, save_predictions
 
 CONFIG_PATH = Path(__file__).parent.parent.parent / "configs" / "slm_config_experiment_02_kfold.yaml"
 
@@ -78,12 +78,12 @@ def load_model_for_eval(cfg, adapter_dir: Path):
 
 
 @torch.inference_mode()
-def eval_fold(model, processor, hf_split, val_indices, fold_idx):
+def eval_fold(model, processor, hf_split, val_indices, fold_idx, adapter_root):
     device = next(model.parameters()).device
     n = len(val_indices)
     print(f"\n[Fold {fold_idx}] evaluating {n:,} examples...", flush=True)
 
-    y_true, y_pred = [], []
+    y_true, y_pred, raw_outputs = [], [], []
 
     for i, idx in enumerate(val_indices):
         if i % 500 == 0 and i > 0:
@@ -108,15 +108,17 @@ def eval_fold(model, processor, hf_split, val_indices, fold_idx):
             text=[text], images=image_inputs, videos=video_inputs, return_tensors="pt"
         ).to(device)
 
-        out = model.generate(**inputs, max_new_tokens=5, do_sample=False)
-        generated = processor.decode(
+        out = model.generate(**inputs, max_new_tokens=10, do_sample=False)
+        raw = processor.decode(
             out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
-        ).strip().upper()
+        )
+        generated = raw.strip().upper()
 
         pred = TEXT2LABEL.get(generated, -1)
         if pred == -1:
+            # substring OR prefix match (handles truncated tokens like "SYNTHET")
             for k, v in TEXT2LABEL.items():
-                if k in generated:
+                if k in generated or (generated and k.startswith(generated)):
                     pred = v
                     break
             if pred == -1:
@@ -124,6 +126,7 @@ def eval_fold(model, processor, hf_split, val_indices, fold_idx):
 
         y_true.append(item["label"])
         y_pred.append(pred)
+        raw_outputs.append(raw)
 
     f1_macro = float(f1_score(y_true, y_pred, average="macro"))
     acc      = float(accuracy_score(y_true, y_pred))
@@ -134,6 +137,9 @@ def eval_fold(model, processor, hf_split, val_indices, fold_idx):
         f"REAL={per_cls[0]*100:.1f} SYN={per_cls[1]*100:.1f} TAM={per_cls[2]*100:.1f}",
         flush=True,
     )
+
+    cm = save_predictions(adapter_root, f"fold_{fold_idx}", y_true, y_pred, raw_outputs)
+
     return {
         "fold"        : fold_idx,
         "best_f1"     : f1_macro,
@@ -142,6 +148,7 @@ def eval_fold(model, processor, hf_split, val_indices, fold_idx):
         "f1_synthetic": float(per_cls[1]),
         "f1_tampered" : float(per_cls[2]),
         "n_eval"      : n,
+        "conf_matrix" : cm,
     }
 
 
@@ -255,7 +262,7 @@ def main():
         print(f"\n[Fold {fold_num}] Loading adapter from {adapter_dir}...")
         model, processor = load_model_for_eval(cfg, adapter_dir)
 
-        result = eval_fold(model, processor, hf_train, val_indices, fold_num)
+        result = eval_fold(model, processor, hf_train, val_indices, fold_num, adapter_root)
         fold_metrics.append(result)
 
         del model, processor
