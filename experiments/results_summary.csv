@@ -9,3 +9,4 @@ timestamp,model,accuracy,f1_macro,f1_real,f1_synthetic,f1_tampered
 20260521_025518,slm_qwen3vl2b_qlora_kfold_5fold,95.77,95.69±7.29,95.02,98.59,93.44
 20260527_175053,cnn_kfold_5fold,94.93,94.93±0.04,92.52,99.88,92.38
 20260606_113838,cnn_kfold_5fold,94.68,94.68±0.55,92.13,99.87,92.03
+20260606_184716,slm_lfm25vl450m_qlora_kfold_5fold,98.94,98.94±0.03,98.54,99.82,98.46
