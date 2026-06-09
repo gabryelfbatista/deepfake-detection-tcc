@@ -9,7 +9,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from data.dataset import load_sidset, stratified_sample
-from utils import compute_metrics, save_results, set_seed
+from utils import compute_metrics, save_results, save_predictions, set_seed
 from train.experiment_01_cnn_baseline import (
     load_config,
     build_model,
@@ -47,6 +47,7 @@ def evaluate(cfg):
         y_true.extend(labels.tolist())
 
     metrics = compute_metrics(y_true, y_pred)
+    save_predictions(cfg["output"]["dir"], "val", y_true, y_pred)
     save_results(metrics, cfg["output"]["dir"], "CNN_EfficientNetB0_exp01")
     return metrics
 
