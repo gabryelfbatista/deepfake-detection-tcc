@@ -1,0 +1,58 @@
+# Multimodal SLM K-Fold Configuration — Qwen3-VL-2B-Instruct (Experiment 03)
+# References: Hu et al. (2021) — LoRA; Dettmers et al. (2023) — QLoRA
+# Target hardware: 1x RTX 4090 (24GB) — QLoRA 4-bit. Single-GPU (no DDP).
+# Pareado com slm_config_experiment_03_liquid.yaml para comparação justa entre VLs.
+
+model:
+  id: "Qwen/Qwen3-VL-2B-Instruct"
+  dtype: "bfloat16"
+  min_pixels: 3136    # 4 * 28 * 28
+  max_pixels: 200704  # 256 * 28 * 28
+
+quantization:
+  load_in_4bit: true
+  quant_type: "nf4"
+  double_quant: true
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  epochs: 1
+  batch_size: 16
+  grad_accumulation: 4          # effective batch = 16 * 4 = 64 (igual ao Liquid exp_03)
+  learning_rate: 2.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  optimizer: "paged_adamw_8bit"
+  max_seq_length: 512
+  bf16: true
+  gradient_checkpointing: true
+
+dataset:
+  id: "saberzl/SID_Set"
+  local_path: "dataset/sid_set"
+  max_train: null               # full dataset (210k); pool size for kfold splitting
+  eval_max_per_fold: null
+
+kfold:
+  n_splits: 5
+  shuffle: true
+  seed: 42
+
+output:
+  dir: "experiments/qwen_kfold_03"
+  save_total_limit: 1
+  report_to: "tensorboard"
+  save_adapters: true
