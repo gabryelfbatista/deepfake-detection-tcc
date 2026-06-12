@@ -18,6 +18,7 @@ experiments/*/lora_adapter/
 experiments/slm_kfold_*/fold_*/
 experiments/cnn_kfold_*/fold_*/
 experiments/liquid_kfold_*/fold_*/
+experiments/qwen_kfold_*/fold_*/
 experiments/**/*.pth
 experiments/**/*.bin
 experiments/**/*.safetensors
@@ -31,6 +32,7 @@ dataset/*
 experiments/*/logs/
 wandb/
 *.log
+*.out
 
 # OS
 .DS_Store
