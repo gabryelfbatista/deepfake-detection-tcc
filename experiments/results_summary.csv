@@ -10,3 +10,5 @@ timestamp,model,accuracy,f1_macro,f1_real,f1_synthetic,f1_tampered
 20260527_175053,cnn_kfold_5fold,94.93,94.93±0.04,92.52,99.88,92.38
 20260606_113838,cnn_kfold_5fold,94.68,94.68±0.55,92.13,99.87,92.03
 20260606_184716,slm_lfm25vl450m_qlora_kfold_5fold,98.94,98.94±0.03,98.54,99.82,98.46
+20260610_010351,SLM_LFM25VL_ZEROSHOT_no_finetune,33.37,16.78,49.99,0.00,0.36
+20260610_231042,SLM_QWEN3VL2B_ZEROSHOT_no_finetune,33.35,16.71,50.00,0.02,0.12

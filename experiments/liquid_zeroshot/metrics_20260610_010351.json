@@ -1,0 +1,66 @@
+{
+  "name": "SLM_LFM25VL_ZEROSHOT_no_finetune",
+  "timestamp": "20260610_010351",
+  "metrics": {
+    "accuracy": 0.33366666666666667,
+    "f1_macro": 0.1678385384970608,
+    "report": {
+      "REAL": {
+        "precision": 0.3333555748315207,
+        "recall": 0.9992,
+        "f1-score": 0.4999249512182919,
+        "support": 10000.0
+      },
+      "SYNTHETIC": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 10000.0
+      },
+      "TAMPERED": {
+        "precision": 0.6923076923076923,
+        "recall": 0.0018,
+        "f1-score": 0.003590664272890485,
+        "support": 10000.0
+      },
+      "accuracy": 0.33366666666666667,
+      "macro avg": {
+        "precision": 0.341887755713071,
+        "recall": 0.3336666666666666,
+        "f1-score": 0.1678385384970608,
+        "support": 30000.0
+      },
+      "weighted avg": {
+        "precision": 0.341887755713071,
+        "recall": 0.33366666666666667,
+        "f1-score": 0.16783853849706076,
+        "support": 30000.0
+      }
+    },
+    "conf_matrix": [
+      [
+        9992,
+        0,
+        8
+      ],
+      [
+        10000,
+        0,
+        0
+      ],
+      [
+        9982,
+        0,
+        18
+      ]
+    ],
+    "valid_output_rate": 1.0,
+    "output_breakdown": {
+      "exact": 30000,
+      "fuzzy": 0,
+      "default": 0
+    },
+    "n_eval": 30000,
+    "split": "validation"
+  }
+}
