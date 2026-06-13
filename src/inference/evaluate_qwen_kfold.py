@@ -34,7 +34,7 @@ from peft import PeftModel
 from qwen_vl_utils import process_vision_info
 
 from data.dataset import load_sidset, stratified_sample, NUM_CLASSES, LABEL_NAMES
-from utils import set_seed, TEXT2LABEL, save_predictions
+from utils import set_seed, TEXT2LABEL, save_predictions, compute_metrics
 
 CONFIG_PATH = Path(__file__).parent.parent.parent / "configs" / "slm_config_experiment_03_qwen.yaml"
 
@@ -78,7 +78,7 @@ def load_model_for_eval(cfg, adapter_dir: Path):
 
 
 @torch.inference_mode()
-def eval_fold(model, processor, hf_split, val_indices, fold_idx, adapter_root):
+def eval_fold(model, processor, hf_split, val_indices, fold_idx, out_dir):
     device = next(model.parameters()).device
     n = len(val_indices)
     print(f"\n[Fold {fold_idx}] evaluating {n:,} examples...", flush=True)
@@ -128,51 +128,87 @@ def eval_fold(model, processor, hf_split, val_indices, fold_idx, adapter_root):
         y_pred.append(pred)
         raw_outputs.append(raw)
 
-    f1_macro = float(f1_score(y_true, y_pred, average="macro"))
-    acc      = float(accuracy_score(y_true, y_pred))
-    per_cls  = f1_score(y_true, y_pred, average=None, labels=[0, 1, 2])
+    # Route through the shared compute_metrics so precision/recall/f1 per class
+    # (+ macro) are captured exactly like the zero-shot eval — required for an
+    # apples-to-apples fold-vs-zero-shot comparison.
+    metrics  = compute_metrics(y_true, y_pred)
+    rep      = metrics["report"]
+    f1_macro = float(metrics["f1_macro"])
+    acc      = float(metrics["accuracy"])
 
     print(
         f"[Fold {fold_idx}] acc={acc*100:.2f}% | F1-Macro={f1_macro*100:.2f}% | "
-        f"REAL={per_cls[0]*100:.1f} SYN={per_cls[1]*100:.1f} TAM={per_cls[2]*100:.1f}",
+        f"REAL={rep['REAL']['f1-score']*100:.1f} "
+        f"SYN={rep['SYNTHETIC']['f1-score']*100:.1f} "
+        f"TAM={rep['TAMPERED']['f1-score']*100:.1f}",
         flush=True,
     )
 
-    cm = save_predictions(adapter_root, f"fold_{fold_idx}", y_true, y_pred, raw_outputs)
+    cm = save_predictions(out_dir, f"fold_{fold_idx}", y_true, y_pred, raw_outputs)
+
+    def cls(name, metric):
+        return float(rep[name][metric])
 
     return {
-        "fold"        : fold_idx,
-        "best_f1"     : f1_macro,
-        "accuracy"    : acc,
-        "f1_real"     : float(per_cls[0]),
-        "f1_synthetic": float(per_cls[1]),
-        "f1_tampered" : float(per_cls[2]),
-        "n_eval"      : n,
-        "conf_matrix" : cm,
+        "fold"               : fold_idx,
+        "best_f1"            : f1_macro,
+        "accuracy"           : acc,
+        "f1_real"            : cls("REAL", "f1-score"),
+        "f1_synthetic"       : cls("SYNTHETIC", "f1-score"),
+        "f1_tampered"        : cls("TAMPERED", "f1-score"),
+        "precision_real"     : cls("REAL", "precision"),
+        "precision_synthetic": cls("SYNTHETIC", "precision"),
+        "precision_tampered" : cls("TAMPERED", "precision"),
+        "recall_real"        : cls("REAL", "recall"),
+        "recall_synthetic"   : cls("SYNTHETIC", "recall"),
+        "recall_tampered"    : cls("TAMPERED", "recall"),
+        "macro_precision"    : float(rep["macro avg"]["precision"]),
+        "macro_recall"       : float(rep["macro avg"]["recall"]),
+        "n_eval"             : n,
+        "conf_matrix"        : metrics["conf_matrix"],
     }
 
 
-def save_results(fold_metrics, output_dir: Path, cfg):
+def save_results(fold_metrics, output_dir: Path, cfg, model_name: str):
     f1_scores = [m["best_f1"] for m in fold_metrics]
     accs      = [m["accuracy"] for m in fold_metrics]
     mean_f1, std_f1 = float(np.mean(f1_scores)), float(np.std(f1_scores))
     mean_acc        = float(np.mean(accs))
+
+    def avg(key):
+        vals = [m[key] for m in fold_metrics if m.get(key) is not None]
+        return float(np.mean(vals)) if vals else None
 
     print(f"\n{'='*55}")
     print(f"K-Fold Eval Results ({len(fold_metrics)} folds) — Qwen3-VL-2B + QLoRA")
     print(f"Per-fold F1-Macro: {[f'{v*100:.2f}%' for v in f1_scores]}")
     print(f"Mean F1-Macro : {mean_f1*100:.2f}%  ±  {std_f1*100:.2f}%")
     print(f"Mean Accuracy : {mean_acc*100:.2f}%")
+    print(f"Mean macro Precision/Recall : "
+          f"{(avg('macro_precision') or 0)*100:.2f}% / {(avg('macro_recall') or 0)*100:.2f}%")
     print(f"{'='*55}")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     aggregate = {
         "timestamp": ts,
         "model"    : cfg["model"]["id"],
+        "run"      : model_name,
         "n_splits" : len(fold_metrics),
         "mean_f1"  : mean_f1,
         "std_f1"   : std_f1,
         "mean_acc" : mean_acc,
+        "mean_macro_precision": avg("macro_precision"),
+        "mean_macro_recall"   : avg("macro_recall"),
+        "mean_precision_per_class": {
+            "REAL"     : avg("precision_real"),
+            "SYNTHETIC": avg("precision_synthetic"),
+            "TAMPERED" : avg("precision_tampered"),
+        },
+        "mean_recall_per_class": {
+            "REAL"     : avg("recall_real"),
+            "SYNTHETIC": avg("recall_synthetic"),
+            "TAMPERED" : avg("recall_tampered"),
+        },
         "per_fold" : fold_metrics,
     }
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -190,7 +226,7 @@ def save_results(fold_metrics, output_dir: Path, cfg):
             writer.writeheader()
         writer.writerow({
             "timestamp"   : ts,
-            "model"       : f"slm_qwen3vl2b_qlora_kfold_{cfg['kfold']['n_splits']}fold",
+            "model"       : model_name,
             "accuracy"    : f"{mean_acc*100:.2f}",
             "f1_macro"    : f"{mean_f1*100:.2f}±{std_f1*100:.2f}",
             "f1_real"     : f"{np.mean([m['f1_real']     for m in fold_metrics])*100:.2f}",
@@ -216,6 +252,20 @@ def main():
         default=None,
         help="Which fold numbers to evaluate (1-indexed). Default: all.",
     )
+    parser.add_argument(
+        "--on-validation",
+        action="store_true",
+        help="Evaluate each fold adapter on the held-out 30k 'validation' split "
+             "(comparable to the zero-shot eval) instead of its in-train K-Fold slice. "
+             "Results go to {adapter_root}/on_validation/.",
+    )
+    parser.add_argument(
+        "--n-samples",
+        type=int,
+        default=0,
+        help="With --on-validation: stratified subsample size of the validation split "
+             "(0 = full 30k).",
+    )
     args = parser.parse_args()
 
     cfg = load_config()
@@ -224,45 +274,61 @@ def main():
     adapter_root = Path(args.adapter_dir) if args.adapter_dir else Path(cfg["output"]["dir"])
     print(f"[setup] Adapter root: {adapter_root}")
 
-    min_px = cfg["model"].get("min_pixels", 3136)
-    max_px = cfg["model"].get("max_pixels", 200704)
     print(f"[setup] Loading dataset...")
-    sidset   = load_sidset(cfg["dataset"].get("local_path", "dataset/sid_set"))
-    hf_train = sidset["train"]
+    sidset = load_sidset(cfg["dataset"].get("local_path", "dataset/sid_set"))
 
-    max_train = cfg["dataset"].get("max_train")
-    if max_train:
-        pool_indices = stratified_sample(hf_train, max_train, seed=cfg["kfold"]["seed"])
-    else:
-        pool_indices = list(range(len(hf_train)))
-
-    all_labels   = np.array(hf_train["label"])[pool_indices]
-    pool_indices = np.array(pool_indices)
-
-    kf = StratifiedKFold(
-        n_splits=cfg["kfold"]["n_splits"],
-        shuffle=cfg["kfold"]["shuffle"],
-        random_state=cfg["kfold"]["seed"],
-    )
-    folds = list(kf.split(pool_indices, all_labels))
     target_folds = args.folds if args.folds else list(range(1, cfg["kfold"]["n_splits"] + 1))
+
+    if args.on_validation:
+        hf_eval = sidset["validation"]
+        val_indices_shared = (
+            stratified_sample(hf_eval, args.n_samples, seed=cfg["kfold"]["seed"])
+            if args.n_samples else list(range(len(hf_eval)))
+        )
+        out_dir = adapter_root / "on_validation"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        print(
+            f"[setup] --on-validation: each fold evaluated on {len(val_indices_shared):,} "
+            f"'validation' examples -> {out_dir}"
+        )
+    else:
+        hf_train  = sidset["train"]
+        max_train = cfg["dataset"].get("max_train")
+        if max_train:
+            pool_indices = stratified_sample(hf_train, max_train, seed=cfg["kfold"]["seed"])
+        else:
+            pool_indices = list(range(len(hf_train)))
+
+        all_labels   = np.array(hf_train["label"])[pool_indices]
+        pool_indices = np.array(pool_indices)
+
+        kf = StratifiedKFold(
+            n_splits=cfg["kfold"]["n_splits"],
+            shuffle=cfg["kfold"]["shuffle"],
+            random_state=cfg["kfold"]["seed"],
+        )
+        folds   = list(kf.split(pool_indices, all_labels))
+        out_dir = adapter_root
 
     fold_metrics = []
 
     for fold_num in target_folds:
-        fold_idx   = fold_num - 1
-        _, val_pos = folds[fold_idx]
-        val_indices = pool_indices[val_pos].tolist()
-
         adapter_dir = adapter_root / f"fold_{fold_num}" / "lora_adapter"
         if not adapter_dir.exists():
             print(f"[Fold {fold_num}] adapter not found at {adapter_dir}, skipping.")
             continue
 
+        if args.on_validation:
+            hf_split, val_indices = hf_eval, val_indices_shared
+        else:
+            _, val_pos  = folds[fold_num - 1]
+            val_indices = pool_indices[val_pos].tolist()
+            hf_split    = hf_train
+
         print(f"\n[Fold {fold_num}] Loading adapter from {adapter_dir}...")
         model, processor = load_model_for_eval(cfg, adapter_dir)
 
-        result = eval_fold(model, processor, hf_train, val_indices, fold_num, adapter_root)
+        result = eval_fold(model, processor, hf_split, val_indices, fold_num, out_dir)
         fold_metrics.append(result)
 
         del model, processor
@@ -270,7 +336,9 @@ def main():
         torch.cuda.empty_cache()
 
     if fold_metrics:
-        save_results(fold_metrics, adapter_root, cfg)
+        suffix = "on_val30k" if args.on_validation else f"{cfg['kfold']['n_splits']}fold"
+        model_name = f"slm_qwen3vl2b_qlora_kfold_{suffix}"
+        save_results(fold_metrics, out_dir, cfg, model_name)
 
 
 if __name__ == "__main__":
