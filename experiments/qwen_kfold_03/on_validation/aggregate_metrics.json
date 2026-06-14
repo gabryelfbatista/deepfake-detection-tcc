@@ -1,0 +1,193 @@
+{
+  "timestamp": "20260614_013353",
+  "model": "Qwen/Qwen3-VL-2B-Instruct",
+  "run": "slm_qwen3vl2b_qlora_kfold_on_val30k",
+  "n_splits": 5,
+  "mean_f1": 0.9923805248837965,
+  "std_f1": 0.0003185528377971883,
+  "mean_acc": 0.99238,
+  "mean_macro_precision": 0.9923924042244842,
+  "mean_macro_recall": 0.99238,
+  "mean_precision_per_class": {
+    "REAL": 0.9917194048063201,
+    "SYNTHETIC": 0.9991798459181723,
+    "TAMPERED": 0.9862779619489597
+  },
+  "mean_recall_per_class": {
+    "REAL": 0.98652,
+    "SYNTHETIC": 0.9989399999999999,
+    "TAMPERED": 0.99168
+  },
+  "per_fold": [
+    {
+      "fold": 1,
+      "best_f1": 0.9925005738389291,
+      "accuracy": 0.9925,
+      "f1_real": 0.9891997789722208,
+      "f1_synthetic": 0.9991498724808722,
+      "f1_tampered": 0.9891520700636943,
+      "precision_real": 0.9938427374583628,
+      "precision_synthetic": 0.9992997899369811,
+      "precision_tampered": 0.9844492868462758,
+      "recall_real": 0.9846,
+      "recall_synthetic": 0.999,
+      "recall_tampered": 0.9939,
+      "macro_precision": 0.9925306047472066,
+      "macro_recall": 0.9925,
+      "n_eval": 30000,
+      "conf_matrix": [
+        [
+          9846,
+          4,
+          150
+        ],
+        [
+          3,
+          9990,
+          7
+        ],
+        [
+          58,
+          3,
+          9939
+        ]
+      ]
+    },
+    {
+      "fold": 2,
+      "best_f1": 0.9926997157630816,
+      "accuracy": 0.9927,
+      "f1_real": 0.9895864624011215,
+      "f1_synthetic": 0.999000099990001,
+      "f1_tampered": 0.9895125848981222,
+      "precision_real": 0.9908762783236414,
+      "precision_synthetic": 0.9989002199560088,
+      "precision_tampered": 0.9883280127693536,
+      "recall_real": 0.9883,
+      "recall_synthetic": 0.9991,
+      "recall_tampered": 0.9907,
+      "macro_precision": 0.9927015036830013,
+      "macro_recall": 0.9927,
+      "n_eval": 30000,
+      "conf_matrix": [
+        [
+          9883,
+          5,
+          112
+        ],
+        [
+          4,
+          9991,
+          5
+        ],
+        [
+          87,
+          6,
+          9907
+        ]
+      ]
+    },
+    {
+      "fold": 3,
+      "best_f1": 0.9921676106767591,
+      "accuracy": 0.9921666666666666,
+      "f1_real": 0.9887280196382947,
+      "f1_synthetic": 0.9991497874468617,
+      "f1_tampered": 0.9886250249451207,
+      "precision_real": 0.9906635879931733,
+      "precision_synthetic": 0.9993996998499249,
+      "precision_tampered": 0.9864595778574273,
+      "recall_real": 0.9868,
+      "recall_synthetic": 0.9989,
+      "recall_tampered": 0.9908,
+      "macro_precision": 0.9921742885668419,
+      "macro_recall": 0.9921666666666668,
+      "n_eval": 30000,
+      "conf_matrix": [
+        [
+          9868,
+          4,
+          128
+        ],
+        [
+          3,
+          9989,
+          8
+        ],
+        [
+          90,
+          2,
+          9908
+        ]
+      ]
+    },
+    {
+      "fold": 4,
+      "best_f1": 0.9926674501097507,
+      "accuracy": 0.9926666666666667,
+      "f1_real": 0.989518029991474,
+      "f1_synthetic": 0.9990998199639928,
+      "f1_tampered": 0.9893845003737852,
+      "precision_real": 0.9925545829560318,
+      "precision_synthetic": 0.9992997198879552,
+      "precision_tampered": 0.9861897665176353,
+      "recall_real": 0.9865,
+      "recall_synthetic": 0.9989,
+      "recall_tampered": 0.9926,
+      "macro_precision": 0.9926813564538741,
+      "macro_recall": 0.9926666666666667,
+      "n_eval": 30000,
+      "conf_matrix": [
+        [
+          9865,
+          3,
+          132
+        ],
+        [
+          4,
+          9989,
+          7
+        ],
+        [
+          70,
+          4,
+          9926
+        ]
+      ]
+    },
+    {
+      "fold": 5,
+      "best_f1": 0.9918672740304618,
+      "accuracy": 0.9918666666666667,
+      "f1_real": 0.9885253294583354,
+      "f1_synthetic": 0.9988998899889989,
+      "f1_tampered": 0.9881766026440509,
+      "precision_real": 0.9906598373003916,
+      "precision_synthetic": 0.998999799959992,
+      "precision_tampered": 0.9859631657541065,
+      "recall_real": 0.9864,
+      "recall_synthetic": 0.9988,
+      "recall_tampered": 0.9904,
+      "macro_precision": 0.9918742676714967,
+      "macro_recall": 0.9918666666666667,
+      "n_eval": 30000,
+      "conf_matrix": [
+        [
+          9864,
+          4,
+          132
+        ],
+        [
+          3,
+          9988,
+          9
+        ],
+        [
+          90,
+          6,
+          9904
+        ]
+      ]
+    }
+  ]
+}
