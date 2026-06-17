@@ -1,0 +1,41 @@
+# CNN K-Fold Configuration — Xception (timm)
+# Canonical FaceForensics++ deepfake-detection backbone (Chollet, 2017).
+# Loaded via timm `legacy_xception` (original Keras-ported weights).
+
+model:
+  backbone: "legacy_xception"   # timm name for the canonical Xception
+  pretrained: true              # ImageNet weights
+  num_classes: 3                # REAL, SYNTHETIC, TAMPERED
+  # Xception preprocessing differs from EfficientNet: Inception-style
+  # normalization ([0.5]*3) at 299x299, not ImageNet stats at 224.
+  normalize:
+    mean: [0.5, 0.5, 0.5]
+    std:  [0.5, 0.5, 0.5]
+
+training:
+  epochs: 5
+  batch_size: 32              # RTX 4060 Laptop 8GB (Xception @299 is heavy)
+  learning_rate: 2.5e-5       # linear scaling from B0 (8e-4 x 16/512)
+  weight_decay: 0.01
+  lr_scheduler: "cosine"
+  img_size: 299               # Xception native input resolution
+
+augmentation:
+  horizontal_flip: true
+  rotation: 10
+  color_jitter:
+    brightness: 0.2
+    contrast: 0.2
+
+dataset:
+  id: "saberzl/SID_Set"
+  local_path: "dataset/sid_set"
+  max_train: null
+
+kfold:
+  n_splits: 5
+  shuffle: true
+  seed: 42
+
+output:
+  dir: "experiments/xception_kfold_01"

@@ -1,9 +1,10 @@
 """
-Experiment 02 — EfficientNet-B0 with Stratified K-Fold (SID_Set).
-Multi-GPU via HuggingFace Accelerate (DDP) + bf16 mixed precision.
+Experiment 04 — Xception with Stratified K-Fold (SID_Set).
+Canonical FaceForensics++ deepfake-detection backbone (Chollet, 2017),
+loaded from timm. Multi-GPU via HuggingFace Accelerate (DDP) + bf16.
 
 Run with:
-    accelerate launch --num_processes 2 src/train/experiment_02_cnn_kfold.py
+    accelerate launch --num_processes 1 src/train/experiment_04_xception_kfold.py
 """
 import sys
 from pathlib import Path
@@ -15,10 +16,11 @@ from datetime import datetime
 
 import yaml
 import numpy as np
+import timm
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from torchvision import models, transforms
+from torchvision import transforms
 import torchvision.transforms.functional as TF
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import f1_score, accuracy_score
@@ -29,7 +31,7 @@ from torch.utils.tensorboard import SummaryWriter
 from data.dataset import load_sidset, stratified_sample, NUM_CLASSES, LABEL_NAMES
 from utils import set_seed, gpu_info
 
-CONFIG_PATH = Path(__file__).parent.parent.parent / "configs" / "cnn_config_experiment_02_kfold.yaml"
+CONFIG_PATH = Path(__file__).parent.parent.parent / "configs" / "cnn_config_experiment_04_xception_kfold.yaml"
 
 
 def load_config():
@@ -60,6 +62,9 @@ class SquarePad:
 
 def build_transforms(cfg, train=True):
     img_size = cfg["training"]["img_size"]
+    norm = cfg["model"].get("normalize", {})
+    mean = norm.get("mean", [0.485, 0.456, 0.406])
+    std  = norm.get("std",  [0.229, 0.224, 0.225])
     aug = cfg.get("augmentation", {})
 
     # Aspect-preserving: pad to square, then uniform resize (no distortion).
@@ -79,12 +84,12 @@ def build_transforms(cfg, train=True):
             ))
         ops += [
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            transforms.Normalize(mean=mean, std=std),
         ]
     else:
         ops = base + [
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            transforms.Normalize(mean=mean, std=std),
         ]
 
     return transforms.Compose(ops)
@@ -109,11 +114,12 @@ class SIDSetCNN(Dataset):
 
 
 def build_model(cfg):
-    weights = models.EfficientNet_B0_Weights.IMAGENET1K_V1 if cfg["model"]["pretrained"] else None
-    model = models.efficientnet_b0(weights=weights)
-    in_features = model.classifier[1].in_features
-    model.classifier[1] = nn.Linear(in_features, NUM_CLASSES)
-    return model
+    # timm replaces the classifier head when num_classes is passed.
+    return timm.create_model(
+        cfg["model"]["backbone"],
+        pretrained=cfg["model"]["pretrained"],
+        num_classes=NUM_CLASSES,
+    )
 
 
 def train_fold(fold_idx, train_indices, val_indices, hf_train, cfg, accelerator, output_dir):
@@ -171,7 +177,7 @@ def train_fold(fold_idx, train_indices, val_indices, hf_train, cfg, accelerator,
 
         scheduler.step()
 
-        # Gather predictions across both GPUs before computing metrics
+        # Gather predictions across all GPUs before computing metrics
         y_true, y_pred = [], []
         model.eval()
         with torch.no_grad():
@@ -238,6 +244,7 @@ def save_kfold_results(fold_metrics, output_dir, cfg):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     aggregate = {
         "timestamp": ts,
+        "backbone" : cfg["model"]["backbone"],
         "n_splits" : cfg["kfold"]["n_splits"],
         "mean_f1"  : mean_f1,
         "std_f1"   : std_f1,
@@ -261,7 +268,7 @@ def save_kfold_results(fold_metrics, output_dir, cfg):
             writer.writeheader()
         writer.writerow({
             "timestamp"   : ts,
-            "model"       : f"cnn_kfold_{cfg['kfold']['n_splits']}fold",
+            "model"       : f"xception_kfold_{cfg['kfold']['n_splits']}fold",
             "accuracy"    : f"{mean_acc*100:.2f}",
             "f1_macro"    : f"{mean_f1*100:.2f}±{std_f1*100:.2f}",
             "f1_real"     : f"{mean_f1_real*100:.2f}",
@@ -280,6 +287,7 @@ def train(cfg):
 
     accelerator.print("\nGPU:", gpu_info())
     accelerator.print(f"Processes: {accelerator.num_processes} | Device: {accelerator.device} | bf16: on")
+    accelerator.print(f"Backbone: {cfg['model']['backbone']} @ {cfg['training']['img_size']}px")
 
     sidset = load_sidset(cfg["dataset"].get("local_path", "dataset/sid_set"))
     hf_train = sidset["train"]

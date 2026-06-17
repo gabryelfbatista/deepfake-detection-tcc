@@ -7,8 +7,8 @@ model:
 
 training:
   epochs: 5
-  batch_size: 512
-  learning_rate: 8.0e-4
+  batch_size: 64              # RTX 4060 Laptop 8GB
+  learning_rate: 1.0e-4       # linear scaling reference (8e-4 @ batch 512)
   weight_decay: 0.01
   lr_scheduler: "cosine"
   img_size: 224
