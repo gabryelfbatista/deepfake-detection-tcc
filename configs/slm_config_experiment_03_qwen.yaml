@@ -52,7 +52,7 @@ kfold:
   seed: 42
 
 output:
-  dir: "experiments/qwen_kfold_03"
+  dir: "experiments/teste_vram_qwen"
   save_total_limit: 1
   report_to: "tensorboard"
   save_adapters: true

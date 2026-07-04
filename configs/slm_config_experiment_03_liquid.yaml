@@ -41,6 +41,6 @@ kfold:
   seed: 42
 
 output:
-  dir: "experiments/liquid_kfold_03"
+  dir: "experiments/teste_vram_liquid"
   report_to: "tensorboard"
   save_adapters: true
